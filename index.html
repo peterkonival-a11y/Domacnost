@@ -18,7 +18,7 @@ input,select,button{width:100%;padding:8px;margin:5px 0;border-radius:6px;border
 button{font-size:16px;background:#3399ff;color:#fff;border:none;cursor:pointer}
 button:hover{background:#2277cc}
 .income{color:#00ff99;font-weight:bold}
-.expense{color:#ff9933;font-weight:bold}
+.expense{color:#ff3333;font-weight:bold}
 .month-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
 .month-card{border:1px solid #444;border-radius:10px;padding:10px;background:#2a2f44}
 .month-card h4{text-align:center;margin:6px 0;color:#99ccff}
@@ -53,38 +53,31 @@ canvas{max-width:100%;height:300px;background:#1f2233;border-radius:10px}
 
 <div class="tab">
   <button class="active" onclick="openTab(event,'prehlad')">Prehlad</button>
+  <button onclick="openTab(event,'rocny')">Rocny prehlad</button>
   <button onclick="openTab(event,'grafy')">Grafy</button>
 </div>
 
+<!-- Prehlad - aktualny mesiac -->
 <div id="prehlad" class="tab-content active">
 
-  <!-- Rocny prehlad -->
   <div class="box">
-    <h2>Rocny prehlad</h2>
-    <select id="yearSelect"></select>
-    <div id="yearSummary" class="month-grid"></div>
-    <h3>Celkom za rok: <span id="yearTotal">0 EUR</span></h3>
-  </div>
-
-  <!-- Pridavanie zaznamu -->
-  <div class="box" style="position:relative">
     <h2>Pridat zaznam</h2>
+    <label for="date">Kalendar:</label>
     <input type="date" id="date">
     <select id="type">
       <option value="expense">Vydavok</option>
       <option value="income">Prijem</option>
     </select>
     <select id="category">
-      <option>Potraviny</option>
-      <option>Najom</option>
-      <option>Auto</option>
-      <option>Domacnost</option>
-      <option>Zdravie</option>
-      <option>Sport</option>
+      <option>Byvanie & energie:</option>
+      <option>Potraviny & Domacnost:</option>
+      <option>Doprava:</option>
+      <option>Osobne vydavky & Starostlivost</option>
+      <option>Deti & Vzdelavanie:</option>
+      <option>Volny cas & Zabava</option>
       <option>Ostatne</option>
     </select>
-    <input type="text" id="itemInput" class="autocomplete-input" placeholder="Polozka">
-    <div id="suggestions" class="suggestions" style="display:none"></div>
+    <input type="text" id="itemInput" placeholder="Polozka">
     <input type="number" id="amount" placeholder="Suma (EUR)">
     <button onclick="saveRecord()">Ulozit</button>
   </div>
@@ -94,12 +87,6 @@ canvas{max-width:100%;height:300px;background:#1f2233;border-radius:10px}
     <h2>Opakujuce sa platby</h2>
     <input type="text" id="recItem" placeholder="Polozka">
     <select id="recCategory">
-      <option>Potraviny</option>
-      <option>Najom</option>
-      <option>Auto</option>
-      <option>Domacnost</option>
-      <option>Zdravie</option>
-      <option>Sport</option>
       <option>Ostatne</option>
     </select>
     <input type="number" id="recAmount" placeholder="Suma (EUR)">
@@ -113,16 +100,30 @@ canvas{max-width:100%;height:300px;background:#1f2233;border-radius:10px}
     <div id="recurringList" class="records-table"></div>
   </div>
 
-  <!-- Mesacny detail -->
   <div class="box">
-    <h2>Mesacny detail</h2>
-    <select id="monthFilter"></select>
+    <h2>Aktualny mesiac</h2>
+    <select id="monthFilter" onchange="render()"></select>
+    <div style="margin-top:5px;">
+      Prijmy: <span id="monthIncome" class="income">0.00 EUR</span> | 
+      Vydavky: <span id="monthExpense" class="expense">0.00 EUR</span>
+    </div>
     <div id="records" class="records-table"></div>
     <div class="actions"><button onclick="deleteSelected()">Vymaz oznacene</button></div>
     <button onclick="exportXLSX()">Export do Excel (.xlsx)</button>
   </div>
 </div>
 
+<!-- Rocny prehlad - vsetky mesiace -->
+<div id="rocny" class="tab-content">
+  <div class="box">
+    <h2>Rocny prehlad</h2>
+    <select id="yearSelect" onchange="renderRocny()"></select>
+    <div id="yearSummary" class="month-grid"></div>
+    <h3>Celkom za rok: <span id="yearTotal">0 EUR</span></h3>
+  </div>
+</div>
+
+<!-- Grafy -->
 <div id="grafy" class="tab-content">
   <div class="box">
     <h2>Graf prijmov a vydavkov</h2>
@@ -143,9 +144,8 @@ const monthFilter=document.getElementById('monthFilter');
 const yearSummary=document.getElementById('yearSummary');
 const yearTotalEl=document.getElementById('yearTotal');
 const recordsDiv=document.getElementById('records');
-const itemInput=document.getElementById('itemInput');
-const suggestionsDiv=document.getElementById('suggestions');
-const categorySelect=document.getElementById('category');
+const monthIncomeEl=document.getElementById('monthIncome');
+const monthExpenseEl=document.getElementById('monthExpense');
 const monthChartSelect=document.getElementById('monthChartSelect');
 
 function openTab(evt, tabName){
@@ -154,26 +154,28 @@ function openTab(evt, tabName){
   document.getElementById(tabName).classList.add('active');
   evt.currentTarget.classList.add('active');
   if(tabName==='grafy') drawChart();
+  if(tabName==='rocny') renderRocny();
 }
 
 function saveRecord(){
-  const r={date:date.value,type:type.value,category:categorySelect.value,item:itemInput.value,amount:parseFloat(amount.value)};
+  const r={date:date.value,type:type.value,category:category.value,item:itemInput.value,amount:parseFloat(amount.value)};
   if(!r.date||!r.amount||!r.item){alert('Vypln vsetky udaje');return}
   records.push(r);
   if(!categoryItems[r.category]) categoryItems[r.category]=[];
   if(!categoryItems[r.category].includes(r.item)) categoryItems[r.category].push(r.item);
   localStorage.setItem('categoryItems',JSON.stringify(categoryItems));
-  amount.value='';itemInput.value='';
   localStorage.setItem('records',JSON.stringify(records));
+  amount.value=''; itemInput.value='';
   initSelectors();
   render();
 }
 
+// inicializacia vyberu mesiacov a rokov
 function initSelectors(){
   const years=[...new Set(records.map(r=>r.date.slice(0,4)))].sort();
   if(!years.includes(String(new Date().getFullYear()))) years.push(String(new Date().getFullYear()));
   yearSelect.innerHTML=''; years.forEach(y=>{const o=document.createElement('option'); o.value=y; o.textContent=y; yearSelect.appendChild(o);});
-  if(!yearSelect.value) yearSelect.value=String(new Date().getFullYear());
+  yearSelect.value=String(new Date().getFullYear());
 
   monthFilter.innerHTML=''; monthChartSelect.innerHTML='';
   for(let m=1;m<=12;m++){
@@ -183,114 +185,88 @@ function initSelectors(){
   }
   monthFilter.value=new Date().toISOString().slice(0,7);
 }
-
-yearSelect.onchange=()=>{initSelectors();render();};
+yearSelect.onchange=()=>{renderRocny(); initSelectors(); render();}
 monthFilter.onchange=render;
 
+// render aktualny mesiac
 function render(){
-  let yearTotal=0;
-  yearSummary.innerHTML='';
-
-  const selectedMonth = monthFilter.value; // napr. 2026-01
-
-  for(let i=0;i<12;i++){
-    let inc=0,exp=0;
-    
-    // existujuce zaznamy
-    records.forEach(r=>{
-      const d = new Date(r.date);
-      if(d.getFullYear()===Number(yearSelect.value) && d.getMonth()===i){
-        r.type==='income'?inc+=r.amount:exp+=r.amount;
-      }
-    });
-    
-    // opakujuce sa platby
-    recurringRecords.forEach(r=>{
-      const monthStr = yearSelect.value+'-'+String(i+1).padStart(2,'0');
-      if(monthStr >= r.start && (!r.end || monthStr <= r.end)){
-        if(r.frequency==='monthly'){
-          exp += r.amount;
-        }
-      }
-    });
-
-    yearSummary.innerHTML+=`<div class="month-card"><h4>${monthNames[i]}</h4><div class="row"><span>Prijmy</span><span class="income">${inc.toFixed(2)}</span></div><div class="row"><span>Vydavky</span><span class="expense">${exp.toFixed(2)}</span></div></div>`;
-    yearTotal+=inc-exp;
-  }
-  yearTotalEl.innerText=yearTotal.toFixed(2)+' EUR';
-
-  // zobrazenie detailu mesiaca
+  const selectedMonth=monthFilter.value;
+  let inc=0,exp=0;
   recordsDiv.innerHTML='';
 
-  // existujuce zaznamy
   records.forEach((r,i)=>{
     if(!r.date.startsWith(selectedMonth)) return;
+    r.type==='income'?inc+=r.amount:exp+=r.amount;
     const div=document.createElement('div');
     div.className='record-row '+r.type; div.dataset.index=i;
     div.innerHTML=`<input type='checkbox' class='record-check'><span class='desc'>${r.category} - ${r.item}</span><span class='amount'>${r.amount} EUR</span>`;
     recordsDiv.appendChild(div);
   });
 
-  // opakujuce sa platby pre aktualny mesiac
-  recurringRecords.forEach((r,i)=>{
-    if(selectedMonth >= r.start && (!r.end || selectedMonth <= r.end)){
-      const div = document.createElement('div');
+  recurringRecords.forEach(r=>{
+    if(selectedMonth>=r.start && (!r.end || selectedMonth<=r.end)){
+      if(r.frequency==='monthly') exp+=r.amount;
+      const div=document.createElement('div');
       div.className='record-row expense';
-      div.innerHTML = `<span class='desc'>${r.category} - ${r.item} (recurring)</span><span class='amount'>${r.amount} EUR</span>`;
+      div.innerHTML=`<span class='desc'>${r.category} - ${r.item} (recurring)</span><span class='amount'>${r.amount} EUR</span>`;
       recordsDiv.appendChild(div);
     }
   });
+
+  monthIncomeEl.innerText=inc.toFixed(2)+' EUR';
+  monthExpenseEl.innerText=exp.toFixed(2)+' EUR';
 }
 
-// ---- Opakujuce sa platby ----
+// render rocny prehlad - vsetky mesiace
+function renderRocny(){
+  let yearTotal=0;
+  yearSummary.innerHTML='';
+  const year=yearSelect.value;
+  for(let i=0;i<12;i++){
+    let inc=0,exp=0;
+    records.forEach(r=>{
+      const d=new Date(r.date);
+      if(d.getFullYear()==year && d.getMonth()==i) r.type==='income'?inc+=r.amount:exp+=r.amount;
+    });
+    recurringRecords.forEach(r=>{
+      const monthStr=year+'-'+String(i+1).padStart(2,'0');
+      if(monthStr>=r.start && (!r.end || monthStr<=r.end)) if(r.frequency==='monthly') exp+=r.amount;
+    });
+    yearSummary.innerHTML+=`<div class="month-card"><h4>${monthNames[i]}</h4><div class="row"><span>Prijmy</span><span class="income">${inc.toFixed(2)}</span></div><div class="row"><span>Vydavky</span><span class="expense">${exp.toFixed(2)}</span></div></div>`;
+    yearTotal+=inc-exp;
+  }
+  yearTotalEl.innerText=yearTotal.toFixed(2)+' EUR';
+}
+
+// opakujuce sa platby
 function addRecurring(){
-  const r = {
-    item: document.getElementById('recItem').value,
-    category: document.getElementById('recCategory').value,
-    amount: parseFloat(document.getElementById('recAmount').value),
-    frequency: document.getElementById('recFrequency').value,
-    start: document.getElementById('recStart').value,
-    end: document.getElementById('recEnd').value
-  };
-  if(!r.item || !r.amount || !r.start){ alert('Vypln vsetky udaje'); return; }
+  const r={item:recItem.value,category:recCategory.value,amount:parseFloat(recAmount.value),frequency:recFrequency.value,start:recStart.value,end:recEnd.value};
+  if(!r.item||!r.amount||!r.start){alert('Vypln vsetky udaje');return;}
   recurringRecords.push(r);
-  localStorage.setItem('recurringRecords', JSON.stringify(recurringRecords));
-  document.getElementById('recItem').value='';
-  document.getElementById('recAmount').value='';
-  document.getElementById('recStart').value='';
-  document.getElementById('recEnd').value='';
-  renderRecurring();
-  render(); // hned zobraz v aktualnom mesiaci
+  localStorage.setItem('recurringRecords',JSON.stringify(recurringRecords));
+  recItem.value=''; recAmount.value=''; recStart.value=''; recEnd.value='';
+  renderRecurring(); render();
 }
-
 function renderRecurring(){
-  const div = document.getElementById('recurringList');
-  div.innerHTML='';
+  const div=document.getElementById('recurringList'); div.innerHTML='';
   recurringRecords.forEach((r,i)=>{
-    const row = document.createElement('div');
-    row.className='record-row';
-    row.dataset.index=i;
-    row.innerHTML = `<span class='desc'>${r.category} - ${r.item}</span><span class='amount'>${r.amount} EUR</span><span>${r.frequency}</span><button onclick="deleteRecurring(${i})">X</button>`;
+    const row=document.createElement('div');
+    row.className='record-row'; row.dataset.index=i;
+    row.innerHTML=`<span class='desc'>${r.category} - ${r.item}</span><span class='amount'>${r.amount} EUR</span><span>${r.frequency}</span><button onclick="deleteRecurring(${i})">X</button>`;
     div.appendChild(row);
   });
 }
+function deleteRecurring(idx){recurringRecords.splice(idx,1); localStorage.setItem('recurringRecords',JSON.stringify(recurringRecords)); renderRecurring();}
 
-function deleteRecurring(idx){
-  recurringRecords.splice(idx,1);
-  localStorage.setItem('recurringRecords', JSON.stringify(recurringRecords));
-  renderRecurring();
-}
-
-// ---- Zmazanie a export ----
+// mazanie a export
 function deleteSelected(){
   const checkboxes=document.querySelectorAll('#records .record-check');
   const indexesToDelete=[];
-  checkboxes.forEach(cb=>{if(cb.checked){indexesToDelete.push(Number(cb.parentElement.dataset.index));}});
+  checkboxes.forEach(cb=>{if(cb.checked) indexesToDelete.push(Number(cb.parentElement.dataset.index));});
   indexesToDelete.sort((a,b)=>b-a).forEach(idx=>{records.splice(idx,1);});
   localStorage.setItem('records',JSON.stringify(records));
   render();
 }
-
 function exportXLSX(){
   if(records.length===0){alert('Ziadne zaznamy na export'); return;}
   const wb=XLSX.utils.book_new();
@@ -301,7 +277,7 @@ function exportXLSX(){
   XLSX.writeFile(wb,'financie.xlsx');
 }
 
-// ---- Graf ----
+// graf
 function drawChart(){
   const ctx=document.getElementById('chart').getContext('2d');
   const selectedMonth=monthChartSelect.value;
@@ -310,12 +286,14 @@ function drawChart(){
   const data_income=filtered.map(r=>r.type==='income'?r.amount:0);
   const data_expense=filtered.map(r=>r.type==='expense'?r.amount:0);
   if(chartInstance) chartInstance.destroy();
-  chartInstance=new Chart(ctx,{type:'bar',data:{labels:labels,datasets:[{label:'Prijmy',data:data_income,backgroundColor:'#00ff99'},{label:'Vydavky',data:data_expense,backgroundColor:'#ff9933'}]},options:{responsive:true,plugins:{legend:{position:'top'}}}});
+  chartInstance=new Chart(ctx,{type:'bar',data:{labels:labels,datasets:[{label:'Prijmy',data:data_income,backgroundColor:'#00ff99'},{label:'Vydavky',data:data_expense,backgroundColor:'#ff3333'}]},options:{responsive:true,plugins:{legend:{position:'top'}}}});
 }
 
+// inicializacia
 initSelectors();
 render();
 renderRecurring();
+renderRocny();
 </script>
 </body>
 </html>
